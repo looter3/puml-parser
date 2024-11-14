@@ -1,6 +1,7 @@
-use std::collections::HashMap;
-use puml::puml::core_parser::parser::{parse};
-use puml::puml::code_generators::java::generate_java_code;
+mod commands;
+
+use commands::submit_command;
+use commands::open_file_dialog;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -15,13 +16,8 @@ pub fn run() {
       }
       Ok(())
     })
-      .invoke_handler(tauri::generate_handler![submit_controller])
+      .invoke_handler(tauri::generate_handler![submit_command, open_file_dialog])
+      //.invoke_handler(tauri::generate_handler![open_file_dialog])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
-}
-
-// My commands
-#[tauri::command]
-fn submit_controller(path: String) -> HashMap<String, String> {
-    parse(path, generate_java_code)
 }

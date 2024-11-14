@@ -1,25 +1,36 @@
+use std::collections::{BTreeMap, HashMap, HashSet};
 use crate::puml::common::constants::EMPTY_STRING;
 
+/* TODO creare un trait class e poi struct figlie per i vari linguaggi
+    questo unito al punto sotto triggera un refactoring potentissimo
+ */
+
+// TODO forse fields potrebbe diventare una map<stringa(nome), tuple(stringa, stringa)> -> (type, access modifier)
+// TODO methods deve diventare un set o map per prevenire duplicati
 pub struct Class {
-    attributes: Vec<Attribute>,
+    fields: HashSet<Field>,
     extended_class: String,
     interface: String,
-    methods: Vec<Method>
+    methods: HashSet<Method>
 }
 
 impl Class {
     pub fn new() -> Self {
         Self {
-            attributes: Vec::new(),
+            fields: HashSet::new(),
             extended_class: EMPTY_STRING.to_string(),
             interface: EMPTY_STRING.to_string(),
-            methods: Vec::new()
+            methods: HashSet::new()
         }
     }
 
+    pub fn add_method(&mut self, method: Method) {
+        self.methods.insert(method);
+    }
+
     // Getters
-    pub fn attributes(&mut self) -> &mut Vec<Attribute> {
-        &mut self.attributes
+    pub fn fields(&mut self) -> &mut HashSet<Field> {
+        &mut self.fields
     }
     pub fn extended_class(&self) -> &str {
         &self.extended_class
@@ -27,13 +38,13 @@ impl Class {
     pub fn interface(&self) -> &str {
         &self.interface
     }
-    pub fn methods(&mut self) -> &mut Vec<Method> {
-        &mut self.methods
+    pub fn methods(&self) -> &HashSet<Method> {
+        &self.methods
     }
 
     // Setters
-    pub fn set_attributes(&mut self, attributes: Vec<Attribute>) {
-        self.attributes = attributes;
+    pub fn set_fields(&mut self, attributes: HashSet<Field>) {
+        self.fields = attributes;
     }
     pub fn set_extended_class(&mut self, extended_class: String) {
         self.extended_class = extended_class;
@@ -41,18 +52,20 @@ impl Class {
     pub fn set_interface(&mut self, interface: String) {
         self.interface = interface;
     }
-    pub fn set_methods(&mut self, methods: Vec<Method>) {
+    pub fn set_methods(&mut self, methods: HashSet<Method>) {
         self.methods = methods;
     }
+
 }
 
-pub struct Attribute {
+#[derive(Eq, Hash, PartialEq)]
+pub struct Field {
     access_modifier: String,
     name: String,
     attr_type:String
 }
 
-impl Attribute {
+impl Field {
     pub fn new(access_modifier: String, name: String, attr_type: String) -> Self {
         Self { access_modifier, name, attr_type }
     }
@@ -80,23 +93,36 @@ impl Attribute {
     }
 }
 
+#[derive(Eq, Hash, PartialEq)]
 pub struct Method {
     access_modifier: String,
     name: String,
-    return_type:String
+    return_type: String,
+    parameters: BTreeMap<String, String> // key is type or name and value... you get the point
 }
 
 impl Method {
-    pub fn new(access_modifier: String, name: String, return_type: String) -> Self {
-        Self { access_modifier, name, return_type }
+    pub fn new(access_modifier: String, name: String, return_type: String, parameters: BTreeMap<String, String>) -> Self {
+        Self { access_modifier, name, return_type, parameters }
     }
 
-    // Setters
+    pub fn to_string(&self) -> String {
+        self.parameters
+            .iter()
+            .map(|(name, type_)| format!("{} {}", type_, name)) // Format each parameter
+            .collect::<Vec<_>>() // Collect into a Vec of Strings
+            .join(", ") // Join with ", " separator
+    }
+
+    // Getters
     pub fn access_modifier(&self) -> &str {
         &self.access_modifier
     }
     pub fn name(&self) -> &str {
         &self.name
+    }
+    pub fn parameters(&self) -> &BTreeMap<String, String> {
+        &self.parameters
     }
     pub fn return_type(&self) -> &str {
         &self.return_type
@@ -111,6 +137,9 @@ impl Method {
     }
     pub fn set_return_type(&mut self, return_type: String) {
         self.return_type = return_type;
+    }
+    pub fn set_parameters(&mut self, parameters: BTreeMap<String, String>) {
+        self.parameters = parameters;
     }
 }
 

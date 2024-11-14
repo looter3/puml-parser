@@ -1,20 +1,19 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::time::Instant;
+use regex::Regex;
 use crate::puml::code_generators::code_generator::{SourceCodeGenerator, SourceCodeStrategy};
 use crate::puml::common::constants::{CH_PRIVATE, CH_PROTECTED, CH_PUBLIC};
 
-use crate::puml::core_parser::class::{AccessModifier, Attribute, Class, Method};
-use crate::puml::core_parser::regex::{REGEX_SINGLETON, RegexType};
+use crate::puml::core_parser::class::{AccessModifier, Class, Field, Method};
+use crate::puml::core_parser::regex::{REGEX_SINGLETON, ClassRegex};
 
-pub fn parse(path: String, source_code_strategy: SourceCodeStrategy) -> HashMap<String, String> {
+pub fn parse(file: File, source_code_strategy: SourceCodeStrategy) -> HashMap<String, String> {
 
     let start = Instant::now();
 
-    // Trim the input path to remove any extra spaces, newline, or carriage return characters
-    let path = path.trim();
-    let parsing_res = parse_puml(path);
+    let parsing_res = parse_puml(file);
 
     let mut res = HashMap::new();
 
@@ -30,37 +29,29 @@ pub fn parse(path: String, source_code_strategy: SourceCodeStrategy) -> HashMap<
     res
 }
 
-fn parse_puml(path: &str) -> Result<HashMap<String, Class>, String> {
+fn parse_puml(file: File) -> Result<HashMap<String, Class>, String> {
 
     let start = Instant::now();
 
-    // Attempt to open the file
-    match File::open(&path) {
-        Ok(file) => {
-            let reader = BufReader::new(file);
+    let reader = BufReader::new(file);
+    let mut current_class = String::new();
+    let mut classes = HashMap::new();
 
-            let mut current_class = String::new();
-            let mut classes = HashMap::new();
-
-            let start_for = Instant::now();
-            // Iterate over each line in the file
-            for line in reader.lines() {
-                match line {
-                    Ok(l) => {
-                        let current_line = l.trim().to_string();
-                        process_line(current_line, &mut current_class, &mut classes);
-                    },
-                    Err(e) => return Err(format!("Error reading line: {}", e)),
-                }
-            }
-            println!("parse_puml() - for cycle time: {:?}", start_for.elapsed());
-            let method_duration = start.elapsed();
-            println!("parse_puml() time: {:?}", method_duration);
-            // Return the classes if everything went well
-            Ok(classes)
+    // Iterate over each line in the file
+    for line in reader.lines() {
+        match line {
+            Ok(l) => {
+                let current_line = l.trim().to_string();
+                process_line(current_line, &mut current_class, &mut classes);
+            },
+            Err(e) => return Err(format!("Error reading line: {}", e)),
         }
-        Err(e) => Err(format!("Failed to open file: {}", e)),
     }
+    let method_duration = start.elapsed();
+    println!("parse_puml() time: {:?}", method_duration);
+
+    // Return the classes if everything went well
+    Ok(classes)
 }
 
 fn process_line(line: String, current_class: &mut String, classes: &mut HashMap<String, Class>) {
@@ -69,74 +60,146 @@ fn process_line(line: String, current_class: &mut String, classes: &mut HashMap<
 
     let regex_map = REGEX_SINGLETON.regexes();
 
+    extract_class(&line, current_class, classes, regex_map);
+
+    extract_parent(&line, current_class, classes, regex_map);
+
+    extract_interface(&line, current_class, classes, regex_map);
+
+    extract_members(line, current_class, classes, regex_map);
+}
+
+fn extract_class(line: &String, current_class: &mut String, classes: &mut HashMap<String, Class>, regex_map: &HashMap<ClassRegex, Regex>) {
     // Detect class definition
-    regex_map.get(&RegexType::CLASS).expect("Regex not found").captures(line.as_str())
-        .and_then(|cap| cap.get(1))
-        .map(|matched_string| {
+    extract_captures(&regex_map[&ClassRegex::CLASS], line, vec![1])
+        .map(|vec| {
+            let class_name = vec.get(0).unwrap();
             current_class.clear();
-            current_class.push_str(matched_string.as_str());
+            current_class.push_str(class_name);
             classes.insert(current_class.clone(), Class::new());
         });
+}
 
+fn extract_parent(line: &String, current_class: &mut String, classes: &mut HashMap<String, Class>, regex_map: &HashMap<ClassRegex, Regex>) {
     // Detect parent class
-    regex_map.get(&RegexType::PARENT).expect("Regex not found").captures(line.as_str())
-        .and_then(|cap| cap.get(1))
-        .map(|matched_string| {
-            if let Some(class) = classes.get_mut(current_class) {
-                class.extended_class().to_string().push_str(matched_string.as_str());
-            }
+    extract_captures(&regex_map[&ClassRegex::PARENT], line, vec![1])
+        .map(|vec| {
+            let parent = vec.get(0).unwrap();
+            classes.get_mut(current_class).map(|class| {
+                class.set_extended_class(parent.to_string());
+            });
         });
+}
 
+fn extract_interface(line: &String, current_class: &mut String, classes: &mut HashMap<String, Class>, regex_map: &HashMap<ClassRegex, Regex>) {
     // Detect interface
-    regex_map.get(&RegexType::INTERFACE).expect("Regex not found").captures(line.as_str())
-        .and_then(|cap| cap.get(1))
-        .map(|matched_string| {
-            if let Some(class) = classes.get_mut(current_class) {
-                class.interface().to_string().push_str(matched_string.as_str());
-            }
+    extract_captures(&regex_map[&ClassRegex::INTERFACE], line, vec![1])
+        .map(|vec| {
+            let interface = vec.get(0).unwrap();
+            classes.get_mut(current_class).map(|class| {
+                class.set_interface(interface.to_string());
+            });
         });
+}
 
-    // process members
+fn extract_members(line: String, current_class: &mut String, classes: &mut HashMap<String, Class>, regex_map: &HashMap<ClassRegex, Regex>) {
+
     if !current_class.is_empty() && (line.contains(CH_PRIVATE) || line.contains(CH_PUBLIC) || line.contains(CH_PROTECTED)) {
 
         // Detect access modifier
         let access_modifier_string = line.chars().next()
-            .and_then(|first_char| get_access_modifier(first_char))  // Get the access modifier
+            .and_then(|first_char| get_access_modifier(first_char))
             .map(|modifier| match modifier {
-                AccessModifier::PUBLIC(s) => s,
-                AccessModifier::PRIVATE(s) => s,
-                AccessModifier::PROTECTED(s) => s,
-            }) // Map enum to the associated string
-            .unwrap_or("unknown".to_string());  // Default to "unknown" if no match
-
-        // Extract method
-        regex_map.get(&RegexType::METHOD).expect("Regex not found").captures(line.as_str())
-            .and_then(|cap| {
-                // group 1: access modifier; group 2: return type; group 3: method name
-                Some((cap.get(2)?.as_str(), cap.get(3)?.as_str()))
+                AccessModifier::PUBLIC(s) | AccessModifier::PRIVATE(s) | AccessModifier::PROTECTED(s) => s,
             })
-            .map(|(return_type, method_name)| {
-                // Perform operations with the two captured strings
-                classes.get_mut(current_class).
-                    map(|class| {
-                        class.methods().push(Method::new(access_modifier_string.clone(), method_name.to_string(), return_type.to_string()));
-                    })
-            });
+            .unwrap_or("unknown".to_string());
 
-        // Extract attribute
-        regex_map.get(&RegexType::ATTRIBUTE).expect("Regex not found").captures(line.as_str())
-            .and_then(|cap| {
-                // group 1: type; group 2: name;
-                Some((cap.get(1)?.as_str(), cap.get(2)?.as_str()))
-            })
-            .map(|(_type, _name)| {
-                // Perform operations with the two captured strings
-                classes.get_mut(current_class).
-                    map(|class| {
-                        class.attributes().push(Attribute::new(access_modifier_string.clone(), _name.to_string(), _type.to_string()));
-                    })
-            });
+        extract_method(&line, current_class, classes, &regex_map, &access_modifier_string);
+
+        extract_field(line, current_class, classes, &regex_map, access_modifier_string);
     }
+}
+
+fn extract_method(line: &String, current_class: &mut String, classes: &mut HashMap<String, Class>, regex_map: &&HashMap<ClassRegex, Regex>, access_modifier_string: &String) {
+
+    extract_captures(&regex_map[&ClassRegex::METHOD], line.as_str(), vec![2, 3, 4])
+        .map(|vec| {
+            let return_type = vec.get(0).unwrap();
+            let method_name = vec.get(1).unwrap();
+
+            // Collect the results into a HashMap
+            let raw_parameters = vec.get(2).unwrap();
+            let parameters = extract_parameters(raw_parameters);
+
+            classes.get_mut(current_class).map(|class| {
+                class.add_method(Method::new(
+                    access_modifier_string.clone(),
+                    method_name.to_string(),
+                    return_type.to_string(),
+                    parameters
+                ));
+            });
+        });
+}
+
+fn extract_parameters(raw_param: &str) -> BTreeMap<String, String> {
+    // Assuming REGEX_SINGLETON.regexes() returns a map of regex patterns,
+    // and we're accessing the specific regex for parameters.
+    let regex_map = REGEX_SINGLETON.regexes();
+
+    // Create a HashMap to store the extracted parameters
+    let mut params = BTreeMap::new();
+
+    // Split the raw_param string by commas and trim whitespace from each part
+    raw_param.split(',')
+        .map(|s| s.trim()) // Trim whitespace
+        .for_each(|parameter| {
+            // Use the regex to extract the type and name
+            if let Some(captures) = extract_captures(&regex_map[&ClassRegex::PARAMETER], parameter, vec![1, 2]) {
+                // captures should contain type (Group 1) and name (Group 2)
+                if let Some(_type) = captures.get(0) {
+                    if let Some(_name) = captures.get(1) {
+                        // Insert the type-name pair into the HashMap
+                        params.insert(_name.to_string(), _type.to_string());
+                        //params.insert(_type.to_string(), _name.to_string());
+                    }
+                }
+            }
+        });
+
+    // Return the HashMap containing all parameters
+    params
+}
+
+fn extract_field(line: String, current_class: &mut String, classes: &mut HashMap<String, Class>, regex_map: &&HashMap<ClassRegex, Regex>, access_modifier_string: String) {
+    // Extract attribute
+    extract_captures(&regex_map[&ClassRegex::FIELD], line.as_str(), vec![1, 2])
+        .map(|vec| {
+            let _type = vec.get(0).unwrap();
+            let _name = vec.get(1).unwrap();
+            // Perform operations with the two captured strings
+            classes.get_mut(current_class).map(|class| {
+                class.fields().insert(Field::new(access_modifier_string.clone(), _name.to_string(), _type.to_string()));
+            });
+        });
+}
+
+// Helper function to extract two capture groups (used for methods and attributes)
+fn extract_captures<'a>(regex: &Regex, text: &'a str, groups: Vec<usize>) -> Option<Vec<&'a str>> {
+    // Collect the captures from each group, filtering out None values
+    let captures: Option<Vec<&'a str>> = groups.iter()
+        .map(|&group| {
+            regex.captures(text)
+                .and_then(|cap| {
+                    cap.get(group).map(|m| {
+                        m.as_str()
+                    })
+                })
+        })
+        .collect();
+
+    // Return the captured values only if all groups are found
+    captures
 }
 
 // Function to convert the first character of a string into an access modifier with a string representation
