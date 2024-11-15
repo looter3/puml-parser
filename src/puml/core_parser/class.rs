@@ -1,12 +1,6 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use crate::puml::common::constants::EMPTY_STRING;
 
-/* TODO creare un trait class e poi struct figlie per i vari linguaggi
-    questo unito al punto sotto triggera un refactoring potentissimo
- */
-
-// TODO forse fields potrebbe diventare una map<stringa(nome), tuple(stringa, stringa)> -> (type, access modifier)
-// TODO methods deve diventare un set o map per prevenire duplicati
 pub struct Class {
     fields: HashSet<Field>,
     extended_class: String,
@@ -26,6 +20,10 @@ impl Class {
 
     pub fn add_method(&mut self, method: Method) {
         self.methods.insert(method);
+    }
+
+    pub fn add_field(&mut self, field: Field) {
+        self.fields.insert(field);
     }
 
     // Getters
