@@ -10,8 +10,10 @@ pub mod puml {
 
     pub mod core_parser {
         pub mod class;
+        pub mod interface;
         pub mod parser;
         pub mod regex;
         pub mod regex_constants;
+        pub mod types;
     }
 }

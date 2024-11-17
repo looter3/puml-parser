@@ -3,13 +3,15 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::time::Instant;
 use regex::Regex;
-use crate::puml::code_generators::code_generator::{SourceCodeGenerator, SourceCodeStrategy};
+use crate::puml::code_generators::code_generator::{CodeGenerator};
 use crate::puml::common::constants::{CH_PRIVATE, CH_PROTECTED, CH_PUBLIC, EMPTY_STRING};
 
 use crate::puml::core_parser::class::{AccessModifier, Class, Field, Method};
-use crate::puml::core_parser::regex::{REGEX_SINGLETON, ClassRegex};
+use crate::puml::core_parser::interface::Interface;
+use crate::puml::core_parser::regex::PUMLRegex;
+use crate::puml::core_parser::types::{Member, Type};
 
-pub fn parse(file: File, source_code_strategy: SourceCodeStrategy) -> HashMap<String, String> {
+pub fn parse(file: File, code_generator: Box<dyn CodeGenerator>) -> HashMap<String, String> {
 
     let start = Instant::now();
 
@@ -20,8 +22,8 @@ pub fn parse(file: File, source_code_strategy: SourceCodeStrategy) -> HashMap<St
     if parsing_res.is_ok() {
         let parsed = parsing_res.unwrap();
 
-        let src_gen = SourceCodeGenerator::new(source_code_strategy);
-        res = src_gen.generate_source_code(parsed);
+        // Generate source code in destination language
+        res = code_generator.generate_source(parsed);
     }
     let duration = start.elapsed();
     println!("Computation time: {:?}", duration);
@@ -29,18 +31,18 @@ pub fn parse(file: File, source_code_strategy: SourceCodeStrategy) -> HashMap<St
     res
 }
 
-fn parse_puml(file: File) -> Result<HashMap<String, Class>, String> {
+fn parse_puml(file: File) -> Result<HashMap<String, Box<dyn Type>>, String> {
 
     let start = Instant::now();
 
     let reader = BufReader::new(file);
-    let mut current_class = String::new();
-    let mut classes = HashMap::new();
+    let mut current_element = String::new();
+    let mut source = HashMap::new();
 
     // Iterate over each line in the file
     for line in reader.lines() {
         match line {
-            Ok(l) => parse_line(&mut current_class, &mut classes, l),
+            Ok(l) => parse_line(l, &mut current_element, &mut source),
             Err(e) => return Err(format!("Error reading line: {}", e)),
         }
     }
@@ -48,46 +50,50 @@ fn parse_puml(file: File) -> Result<HashMap<String, Class>, String> {
     println!("parse_puml() time: {:?}", method_duration);
 
     // Return the classes if everything went well
-    Ok(classes)
+    Ok(source)
 }
 
-fn parse_line(mut current_class: &mut String, classes: &mut HashMap<String, Class>, l: String) {
+fn parse_line(line: String, mut current_element: &mut String, elements: &mut HashMap<String, Box<dyn Type>>) {
 
-    let current_line = l.trim().to_string();
+    let current_line = line.trim().to_string();
 
-    let output = process_line(current_line, &mut current_class);
+    let output = process_line(current_line, &mut current_element);
 
     if let Some(output) = output {
 
         match output {
-            ProcessLineOutput::CLASS(class) => {classes.insert(class.0, class.1);},
-            ProcessLineOutput::MEMBER(member) => {on_member_found(&mut current_class, classes, member);},
+            ProcessLineOutput::MEMBER(member) => {on_member_found(&mut current_element, elements, member);},
+            ProcessLineOutput::TYPE(_type) => {elements.insert(_type.0, _type.1);}
         }
     }
 }
 
-fn on_member_found(current_class: &mut String, classes: &mut HashMap<String, Class>, member: Member) {
-    match member {
-        Member::METHOD(method) => {
-            classes.get_mut(&*current_class).map(|class| {
-                class.add_method(method);
-            });
-        }
-        Member::FIELD(field) => {
-            classes.get_mut(&*current_class).map(|class| {
-                class.add_field(field);
-            });
-        }
-    }
+/**
+ *   Add member to Type
+ */
+fn on_member_found(current_element: &mut String, elements: &mut HashMap<String, Box<dyn Type>>, member: Member) {
+    elements.get_mut(&*current_element).map(|_type| {
+        _type.add_member(member);
+    });
 }
 
-fn process_line(line: String, current_class: &mut String/*, classes: &mut HashMap<String, Class>*/) -> Option<ProcessLineOutput> {
+/**
+ *  Process next line and returns an output
+ */
+fn process_line(line: String, current_element: &mut String) -> Option<ProcessLineOutput> {
 
-    let class = extract_class_definition(&line, current_class);
+    // TODO add support for all types
+    let class = extract_class_definition(&line, current_element);
+    let interface = extract_interface_definition(&line, current_element);
     let member = extract_member(&line);
 
     if let Some(class) = class {
-        return Some(ProcessLineOutput::CLASS(class));
+        //return Some(ProcessLineOutput::CLASS(class));
+        return Some(ProcessLineOutput::TYPE((class.0.to_string(), Box::new(class.1))));
+    }
+    if let Some(iface) = interface {
+        //return Some(ProcessLineOutput::INTERFACE(iface));
+        return Some(ProcessLineOutput::TYPE((iface.0.to_string(), Box::new(iface.1))));
     }
     if let Some(member) = member {
         return Some(ProcessLineOutput::MEMBER(member));
@@ -97,25 +103,23 @@ fn process_line(line: String, current_class: &mut String/*, classes: &mut HashMa
 }
 
 enum ProcessLineOutput {
-    CLASS((String, Class)),
-    MEMBER(Member)
+    TYPE((String, Box<dyn Type>)),
+    MEMBER(Member),
 }
 
-fn extract_class_definition(line: &String, current_class: &mut String/*, classes: &HashMap<String, Class>*/) -> Option<(String, Class)> {
-
-    let regex_map= REGEX_SINGLETON.regexes();
+fn extract_class_definition(line: &String, current_element: &mut String) -> Option<(String, Class)> {
 
     // Detect class definition
-    let class_entry = extract_captures(&regex_map[&ClassRegex::CLASS], line, vec![1])
+    let class_entry = extract_captures(&PUMLRegex::CLASS.get_regex(), line, vec![1])
         .map(|vec| {
 
             let class_name = vec.get(0).unwrap();
-            current_class.clear();
-            current_class.push_str(class_name);
-            let mut class = Class::new();
+            current_element.clear();
+            current_element.push_str(class_name);
+            let mut class = Class::new(class_name.to_string());
 
             let parent = extract_parent(&line);
-            let interface = extract_interface(&line);
+            let interface = extract_implemented_interface(&line);
 
             if let Some(parent) = parent {
                 class.set_extended_class(parent);
@@ -124,38 +128,40 @@ fn extract_class_definition(line: &String, current_class: &mut String/*, classes
                 class.set_interface(interface);
             }
 
-            return (current_class.clone(), class);
+            return (current_element.clone(), class);
         });
 
     return class_entry;
 }
 
-fn extract_parent(line: &String/*, current_class: &mut String, classes: &mut HashMap<String, Class>*/) -> Option<String> {
-
-    let regex_map = REGEX_SINGLETON.regexes();
-
+fn extract_parent(line: &String) -> Option<String> {
     // Detect parent class
-    let parent = extract_captures(&regex_map[&ClassRegex::PARENT], line, vec![1])
-        .map(|vec| {
-            let parent = vec.get(0).unwrap();
-            return parent.to_string();
-        });
-
-    return parent;
+    extract_hierarchy(line, &PUMLRegex::PARENT.get_regex())
 }
 
-fn extract_interface(line: &String/*, current_class: &mut String, classes: &mut HashMap<String, Class>*/) -> Option<String> {
-
-    let regex_map = REGEX_SINGLETON.regexes();
-
+fn extract_implemented_interface(line: &String) -> Option<String> {
     // Detect interface
-    let interface = extract_captures(&regex_map[&ClassRegex::INTERFACE], line, vec![1])
-        .map(|vec| {
-            let interface = vec.get(0).unwrap();
-            return interface.to_string();
-        });
+    extract_hierarchy(line, &PUMLRegex::IMPL_INTERFACE.get_regex())
+}
 
+fn extract_hierarchy(line: &str, regex: &Regex) -> Option<String> {
+    extract_captures(regex, line, vec![1])
+        .and_then(|captures| captures.get(0).map(|s| s.to_string()))
+}
+
+fn extract_interface_definition(line: &String, current_element: &mut String) -> Option<(String, Interface)> {
+
+    let interface = extract_captures(&PUMLRegex::INTERFACE.get_regex(), line, vec![1])
+        .map(|vec| {
+            let iface = vec.get(0).unwrap();
+            current_element.clear();
+            current_element.push_str(iface);
+            let interface = Interface::new(iface.to_string());
+
+            return (current_element.clone(), interface);
+        });
     return interface;
+
 }
 
 fn extract_member(line: &String) -> Option<Member> {
@@ -178,11 +184,6 @@ fn extract_member(line: &String) -> Option<Member> {
     return None;
 }
 
-enum Member {
-    METHOD(Method),
-    FIELD(Field)
-}
-
 fn extract_access_modifier(line: &String) -> String {
     // Detect access modifier
     let access_modifier_string = line.chars().next()
@@ -195,11 +196,9 @@ fn extract_access_modifier(line: &String) -> String {
     return access_modifier_string;
 }
 
-fn extract_method(line: &String/*, current_class: &mut String, classes: &mut HashMap<String, Class>*/, access_modifier_string: &String) -> Option<Method> {
+fn extract_method(line: &String, access_modifier_string: &String) -> Option<Method> {
 
-    let regex_map = REGEX_SINGLETON.regexes();
-
-    let method = extract_captures(&regex_map[&ClassRegex::METHOD], line.as_str(), vec![2, 3, 4])
+    let method = extract_captures(&PUMLRegex::METHOD.get_regex(), line.as_str(), vec![2, 3, 4])
         .map(|vec| {
             let return_type = vec.get(0).unwrap();
             let method_name = vec.get(1).unwrap();
@@ -220,9 +219,6 @@ fn extract_method(line: &String/*, current_class: &mut String, classes: &mut Has
 }
 
 fn extract_parameters(raw_param: &str) -> BTreeMap<String, String> {
-    // Assuming REGEX_SINGLETON.regexes() returns a map of regex patterns,
-    // and we're accessing the specific regex for parameters.
-    let regex_map = REGEX_SINGLETON.regexes();
 
     // Create a HashMap to store the extracted parameters
     let mut params = BTreeMap::new();
@@ -232,7 +228,7 @@ fn extract_parameters(raw_param: &str) -> BTreeMap<String, String> {
         .map(|s| s.trim()) // Trim whitespace
         .for_each(|parameter| {
             // Use the regex to extract the type and name
-            if let Some(captures) = extract_captures(&regex_map[&ClassRegex::PARAMETER], parameter, vec![1, 2]) {
+            if let Some(captures) = extract_captures(&PUMLRegex::PARAMETER.get_regex(), parameter, vec![1, 2]) {
                 // captures should contain type (Group 1) and name (Group 2)
                 if let Some(_type) = captures.get(0) {
                     if let Some(_name) = captures.get(1) {
@@ -249,10 +245,8 @@ fn extract_parameters(raw_param: &str) -> BTreeMap<String, String> {
 
 fn extract_field(line: &String, access_modifier: &String) -> Option<Field> {
 
-    let regex_map = REGEX_SINGLETON.regexes();
-
     // Extract attribute
-    let field = extract_captures(&regex_map[&ClassRegex::FIELD], line.as_str(), vec![1, 2])
+    let field = extract_captures(&PUMLRegex::FIELD.get_regex(), line.as_str(), vec![1, 2])
         .map(|vec| {
             let _type = vec.get(0).unwrap();
             let _name = vec.get(1).unwrap();

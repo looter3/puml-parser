@@ -1,24 +1,22 @@
-use std::collections::HashMap;
-use crate::puml::core_parser::class::Class;
+use std::collections::{HashMap, HashSet};
+use crate::puml::code_generators::java::JavaCodeGenerator;
+use crate::puml::core_parser::class::{Class, Field, Method};
+use crate::puml::core_parser::interface::Interface;
+use crate::puml::core_parser::types::Type;
 
-/**
-We use strategy pattern to parse in the desired destination language
-*/
-pub type SourceCodeStrategy = fn(classes: HashMap<String, Class>) -> HashMap<String, String>;
+pub trait CodeGenerator {
 
-pub struct SourceCodeGenerator {
-    source_code_strategy: SourceCodeStrategy
+    fn generate_source(&self, types: HashMap<String, Box<dyn Type>>) -> HashMap<String, String>;
+    // Class
+    fn generate_class(&self, class: &Class) -> String;
+    fn generate_class_signature(&self, class_name: &str, ext: &str, iface: &str) -> String;
+    fn generate_fields(&self, fields: &HashSet<Field>) -> String;
+    fn generate_methods(&self, methods: &HashSet<Method>) -> String;
+    //fn generate_interface_signature(interface: &Interface) -> String;
+    // Interface
+    fn generate_interface(&self, interface: &Interface) -> String;
 }
 
-impl SourceCodeGenerator {
-    pub fn new(source_code_strategy: SourceCodeStrategy) -> Self {
-        Self { source_code_strategy }
-    }
-
-    /**
-    Resulting map  has key = to class name; value = source code
-    */
-    pub fn generate_source_code(&self, classes: HashMap<String, Class>) -> HashMap<String, String> {
-        (self.source_code_strategy)(classes)
-    }
+pub enum DestinationLanguage {
+    JAVA(JavaCodeGenerator),
 }

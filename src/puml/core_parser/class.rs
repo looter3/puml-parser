@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashSet};
 use crate::puml::common::constants::EMPTY_STRING;
 
 pub struct Class {
+    name: String,
     fields: HashSet<Field>,
     extended_class: String,
     interface: String,
@@ -9,8 +10,9 @@ pub struct Class {
 }
 
 impl Class {
-    pub fn new() -> Self {
+    pub fn new(name: String) -> Self {
         Self {
+            name,
             fields: HashSet::new(),
             extended_class: EMPTY_STRING.to_string(),
             interface: EMPTY_STRING.to_string(),
@@ -21,14 +23,16 @@ impl Class {
     pub fn add_method(&mut self, method: Method) {
         self.methods.insert(method);
     }
-
     pub fn add_field(&mut self, field: Field) {
         self.fields.insert(field);
     }
 
     // Getters
-    pub fn fields(&mut self) -> &mut HashSet<Field> {
-        &mut self.fields
+    pub fn fields(&self) -> &HashSet<Field> {
+        &self.fields
+    }
+    pub fn name(&self) -> &str {
+        &self.name
     }
     pub fn extended_class(&self) -> &str {
         &self.extended_class
@@ -53,7 +57,9 @@ impl Class {
     pub fn set_methods(&mut self, methods: HashSet<Method>) {
         self.methods = methods;
     }
-
+    pub fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
 }
 
 #[derive(Eq, Hash, PartialEq)]

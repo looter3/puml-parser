@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs::File;
 use rfd::FileDialog;
-use puml::puml::code_generators::java::generate_java_code;
+use puml::puml::code_generators::java::JavaCodeGenerator;
 use puml::puml::core_parser::parser::parse;
 
 // My commands
@@ -10,7 +10,7 @@ pub fn submit_command(path: String/*, source_code_strategy: SourceCodeStrategy*/
     let path = path.trim();
     let file = File::open(path).expect(format!("Failed to read file: {}", path).as_str());
     //parse(file, source_code_strategy)
-    parse(file, generate_java_code)
+    parse(file, Box::new(JavaCodeGenerator))
 }
 
 #[tauri::command]
