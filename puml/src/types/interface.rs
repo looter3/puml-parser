@@ -1,15 +1,19 @@
 use std::collections::HashSet;
-use crate::puml::core_parser::class::{Field, Method};
+use crate::types::class::{Field, Method};
 
 pub struct Interface {
     name: String,
     constants: HashSet<Field>,
-    methods: HashSet<Method>
+    methods: HashSet<Method>,
 }
 
 impl Interface {
     pub fn new(name: String) -> Self {
-        Self { name, constants: HashSet::new(), methods: HashSet::new() }
+        Self {
+            name,
+            constants: HashSet::new(),
+            methods: HashSet::new(),
+        }
     }
 
     pub fn add_method(&mut self, method: Method) {

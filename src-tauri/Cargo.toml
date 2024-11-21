@@ -25,7 +25,7 @@ tauri = { version = "2.1.0", features = [] }
 tauri-plugin-log = "2.0.0-rc"
 rfd = "0.15.0"
 # Backend
-puml = { path = "../src" }
+puml = { path = "../puml" }
 
 [profile.dev]
 debug = true

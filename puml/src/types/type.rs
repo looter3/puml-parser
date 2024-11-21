@@ -1,7 +1,7 @@
+use crate::code_generators::code_generator::{CodeGenerator, DestinationLanguage};
+use crate::types::class::{Class, Field, Method};
+use crate::types::interface::Interface;
 use std::any::Any;
-use crate::puml::code_generators::code_generator::{CodeGenerator, DestinationLanguage};
-use crate::puml::core_parser::class::{Class, Field, Method};
-use crate::puml::core_parser::interface::Interface;
 
 pub trait Type: Any {
     fn as_any(&self) -> &dyn Any;
@@ -14,15 +14,18 @@ impl Type for Class {
     fn as_any(&self) -> &dyn Any {
         self
     }
-
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
 
     fn add_member(&mut self, member: Member) {
         match member {
-            Member::METHOD(method) => {self.add_method(method);}
-            Member::FIELD(field) => {self.add_field(field);}
+            Member::METHOD(method) => {
+                self.add_method(method);
+            }
+            Member::FIELD(field) => {
+                self.add_field(field);
+            }
         }
     }
 
@@ -44,8 +47,12 @@ impl Type for Interface {
 
     fn add_member(&mut self, member: Member) {
         match member {
-            Member::METHOD(method) => {self.add_method(method);}
-            Member::FIELD(constant) => {self.add_constant(constant);}
+            Member::METHOD(method) => {
+                self.add_method(method);
+            }
+            Member::FIELD(constant) => {
+                self.add_constant(constant);
+            }
         }
     }
 
@@ -58,5 +65,5 @@ impl Type for Interface {
 
 pub enum Member {
     METHOD(Method),
-    FIELD(Field)
+    FIELD(Field),
 }

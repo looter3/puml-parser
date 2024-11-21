@@ -1,12 +1,12 @@
+use crate::common::constants::EMPTY_STRING;
 use std::collections::{BTreeMap, HashSet};
-use crate::puml::common::constants::EMPTY_STRING;
 
 pub struct Class {
     name: String,
     fields: HashSet<Field>,
     extended_class: String,
     interface: String,
-    methods: HashSet<Method>
+    methods: HashSet<Method>,
 }
 
 impl Class {
@@ -16,7 +16,7 @@ impl Class {
             fields: HashSet::new(),
             extended_class: EMPTY_STRING.to_string(),
             interface: EMPTY_STRING.to_string(),
-            methods: HashSet::new()
+            methods: HashSet::new(),
         }
     }
 
@@ -66,12 +66,16 @@ impl Class {
 pub struct Field {
     access_modifier: String,
     name: String,
-    attr_type:String
+    attr_type: String,
 }
 
 impl Field {
     pub fn new(access_modifier: String, name: String, attr_type: String) -> Self {
-        Self { access_modifier, name, attr_type }
+        Self {
+            access_modifier,
+            name,
+            attr_type,
+        }
     }
 
     // Getters
@@ -102,12 +106,22 @@ pub struct Method {
     access_modifier: String,
     name: String,
     return_type: String,
-    parameters: BTreeMap<String, String> // key is type or name and value... you get the point
+    parameters: BTreeMap<String, String>,
 }
 
 impl Method {
-    pub fn new(access_modifier: String, name: String, return_type: String, parameters: BTreeMap<String, String>) -> Self {
-        Self { access_modifier, name, return_type, parameters }
+    pub fn new(
+        access_modifier: String,
+        name: String,
+        return_type: String,
+        parameters: BTreeMap<String, String>,
+    ) -> Self {
+        Self {
+            access_modifier,
+            name,
+            return_type,
+            parameters,
+        }
     }
 
     pub fn to_string(&self) -> String {

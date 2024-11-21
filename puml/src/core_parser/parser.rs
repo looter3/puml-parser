@@ -1,18 +1,17 @@
+use crate::code_generators::code_generator::CodeGenerator;
+use crate::common::constants::{CH_PRIVATE, CH_PROTECTED, CH_PUBLIC, EMPTY_STRING};
+use regex::Regex;
 use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::time::Instant;
-use regex::Regex;
-use crate::puml::code_generators::code_generator::{CodeGenerator};
-use crate::puml::common::constants::{CH_PRIVATE, CH_PROTECTED, CH_PUBLIC, EMPTY_STRING};
 
-use crate::puml::core_parser::class::{AccessModifier, Class, Field, Method};
-use crate::puml::core_parser::interface::Interface;
-use crate::puml::core_parser::regex::PUMLRegex;
-use crate::puml::core_parser::types::{Member, Type};
+use crate::types::class::{AccessModifier, Class, Field, Method};
+use crate::types::interface::Interface;
+use crate::core_parser::regex::PUMLRegex;
+use crate::types::r#type::{Member, Type};
 
 pub fn parse(file: File, code_generator: Box<dyn CodeGenerator>) -> HashMap<String, String> {
-
     let start = Instant::now();
 
     let parsing_res = parse_puml(file);
@@ -32,7 +31,6 @@ pub fn parse(file: File, code_generator: Box<dyn CodeGenerator>) -> HashMap<Stri
 }
 
 fn parse_puml(file: File) -> Result<HashMap<String, Box<dyn Type>>, String> {
-
     let start = Instant::now();
 
     let reader = BufReader::new(file);
@@ -53,17 +51,23 @@ fn parse_puml(file: File) -> Result<HashMap<String, Box<dyn Type>>, String> {
     Ok(source)
 }
 
-fn parse_line(line: String, mut current_element: &mut String, elements: &mut HashMap<String, Box<dyn Type>>) {
-
+fn parse_line(
+    line: String,
+    mut current_element: &mut String,
+    elements: &mut HashMap<String, Box<dyn Type>>,
+) {
     let current_line = line.trim().to_string();
 
     let output = process_line(current_line, &mut current_element);
 
     if let Some(output) = output {
-
         match output {
-            ProcessLineOutput::MEMBER(member) => {on_member_found(&mut current_element, elements, member);},
-            ProcessLineOutput::TYPE(_type) => {elements.insert(_type.0, _type.1);}
+            ProcessLineOutput::MEMBER(member) => {
+                on_member_found(&mut current_element, elements, member);
+            }
+            ProcessLineOutput::TYPE(_type) => {
+                elements.insert(_type.0, _type.1);
+            }
         }
     }
 }
@@ -71,7 +75,11 @@ fn parse_line(line: String, mut current_element: &mut String, elements: &mut Has
 /**
  *   Add member to Type
  */
-fn on_member_found(current_element: &mut String, elements: &mut HashMap<String, Box<dyn Type>>, member: Member) {
+fn on_member_found(
+    current_element: &mut String,
+    elements: &mut HashMap<String, Box<dyn Type>>,
+    member: Member,
+) {
     elements.get_mut(&*current_element).map(|_type| {
         _type.add_member(member);
     });
@@ -81,19 +89,22 @@ fn on_member_found(current_element: &mut String, elements: &mut HashMap<String, 
  *  Process next line and returns an output
  */
 fn process_line(line: String, current_element: &mut String) -> Option<ProcessLineOutput> {
-
     // TODO add support for all types
     let class = extract_class_definition(&line, current_element);
     let interface = extract_interface_definition(&line, current_element);
     let member = extract_member(&line);
 
     if let Some(class) = class {
-        //return Some(ProcessLineOutput::CLASS(class));
-        return Some(ProcessLineOutput::TYPE((class.0.to_string(), Box::new(class.1))));
+        return Some(ProcessLineOutput::TYPE((
+            class.0.to_string(),
+            Box::new(class.1),
+        )));
     }
     if let Some(iface) = interface {
-        //return Some(ProcessLineOutput::INTERFACE(iface));
-        return Some(ProcessLineOutput::TYPE((iface.0.to_string(), Box::new(iface.1))));
+        return Some(ProcessLineOutput::TYPE((
+            iface.0.to_string(),
+            Box::new(iface.1),
+        )));
     }
     if let Some(member) = member {
         return Some(ProcessLineOutput::MEMBER(member));
@@ -107,29 +118,29 @@ enum ProcessLineOutput {
     MEMBER(Member),
 }
 
-fn extract_class_definition(line: &String, current_element: &mut String) -> Option<(String, Class)> {
-
+fn extract_class_definition(
+    line: &String,
+    current_element: &mut String,
+) -> Option<(String, Class)> {
     // Detect class definition
-    let class_entry = extract_captures(&PUMLRegex::CLASS.get_regex(), line, vec![1])
-        .map(|vec| {
+    let class_entry = extract_captures(&PUMLRegex::CLASS.get_regex(), line, vec![1]).map(|vec| {
+        let class_name = vec.get(0).unwrap();
+        current_element.clear();
+        current_element.push_str(class_name);
+        let mut class = Class::new(class_name.to_string());
 
-            let class_name = vec.get(0).unwrap();
-            current_element.clear();
-            current_element.push_str(class_name);
-            let mut class = Class::new(class_name.to_string());
+        let parent = extract_parent(&line);
+        let interface = extract_implemented_interface(&line);
 
-            let parent = extract_parent(&line);
-            let interface = extract_implemented_interface(&line);
+        if let Some(parent) = parent {
+            class.set_extended_class(parent);
+        }
+        if let Some(interface) = interface {
+            class.set_interface(interface);
+        }
 
-            if let Some(parent) = parent {
-                class.set_extended_class(parent);
-            }
-            if let Some(interface) = interface {
-                class.set_interface(interface);
-            }
-
-            return (current_element.clone(), class);
-        });
+        return (current_element.clone(), class);
+    });
 
     return class_entry;
 }
@@ -149,27 +160,25 @@ fn extract_hierarchy(line: &str, regex: &Regex) -> Option<String> {
         .and_then(|captures| captures.get(0).map(|s| s.to_string()))
 }
 
-fn extract_interface_definition(line: &String, current_element: &mut String) -> Option<(String, Interface)> {
+fn extract_interface_definition(
+    line: &String,
+    current_element: &mut String,
+) -> Option<(String, Interface)> {
+    let interface = extract_captures(&PUMLRegex::INTERFACE.get_regex(), line, vec![1]).map(|vec| {
+        let iface = vec.get(0).unwrap();
+        current_element.clear();
+        current_element.push_str(iface);
+        let interface = Interface::new(iface.to_string());
 
-    let interface = extract_captures(&PUMLRegex::INTERFACE.get_regex(), line, vec![1])
-        .map(|vec| {
-            let iface = vec.get(0).unwrap();
-            current_element.clear();
-            current_element.push_str(iface);
-            let interface = Interface::new(iface.to_string());
-
-            return (current_element.clone(), interface);
-        });
+        return (current_element.clone(), interface);
+    });
     return interface;
-
 }
 
 fn extract_member(line: &String) -> Option<Member> {
-
     let access_modifier = extract_access_modifier(&line);
 
     if !access_modifier.is_empty() {
-
         let method = extract_method(&line, &access_modifier);
         let field = extract_field(&line, &access_modifier);
 
@@ -186,10 +195,14 @@ fn extract_member(line: &String) -> Option<Member> {
 
 fn extract_access_modifier(line: &String) -> String {
     // Detect access modifier
-    let access_modifier_string = line.chars().next()
+    let access_modifier_string = line
+        .chars()
+        .next()
         .and_then(|first_char| get_access_modifier(first_char))
         .map(|modifier| match modifier {
-            AccessModifier::PUBLIC(s) | AccessModifier::PRIVATE(s) | AccessModifier::PROTECTED(s) => s,
+            AccessModifier::PUBLIC(s)
+            | AccessModifier::PRIVATE(s)
+            | AccessModifier::PROTECTED(s) => s,
         })
         .unwrap_or(EMPTY_STRING.to_string());
 
@@ -197,7 +210,6 @@ fn extract_access_modifier(line: &String) -> String {
 }
 
 fn extract_method(line: &String, access_modifier_string: &String) -> Option<Method> {
-
     let method = extract_captures(&PUMLRegex::METHOD.get_regex(), line.as_str(), vec![2, 3, 4])
         .map(|vec| {
             let return_type = vec.get(0).unwrap();
@@ -211,7 +223,7 @@ fn extract_method(line: &String, access_modifier_string: &String) -> Option<Meth
                 access_modifier_string.clone(),
                 method_name.to_string(),
                 return_type.to_string(),
-                parameters
+                parameters,
             );
         });
 
@@ -219,16 +231,18 @@ fn extract_method(line: &String, access_modifier_string: &String) -> Option<Meth
 }
 
 fn extract_parameters(raw_param: &str) -> BTreeMap<String, String> {
-
     // Create a HashMap to store the extracted parameters
     let mut params = BTreeMap::new();
 
     // Split the raw_param string by commas and trim whitespace from each part
-    raw_param.split(',')
+    raw_param
+        .split(',')
         .map(|s| s.trim()) // Trim whitespace
         .for_each(|parameter| {
             // Use the regex to extract the type and name
-            if let Some(captures) = extract_captures(&PUMLRegex::PARAMETER.get_regex(), parameter, vec![1, 2]) {
+            if let Some(captures) =
+                extract_captures(&PUMLRegex::PARAMETER.get_regex(), parameter, vec![1, 2])
+            {
                 // captures should contain type (Group 1) and name (Group 2)
                 if let Some(_type) = captures.get(0) {
                     if let Some(_name) = captures.get(1) {
@@ -244,13 +258,16 @@ fn extract_parameters(raw_param: &str) -> BTreeMap<String, String> {
 }
 
 fn extract_field(line: &String, access_modifier: &String) -> Option<Field> {
-
     // Extract attribute
-    let field = extract_captures(&PUMLRegex::FIELD.get_regex(), line.as_str(), vec![1, 2])
-        .map(|vec| {
+    let field =
+        extract_captures(&PUMLRegex::FIELD.get_regex(), line.as_str(), vec![1, 2]).map(|vec| {
             let _type = vec.get(0).unwrap();
             let _name = vec.get(1).unwrap();
-            return Field::new(access_modifier.to_string(), _name.to_string(), _type.to_string());
+            return Field::new(
+                access_modifier.to_string(),
+                _name.to_string(),
+                _type.to_string(),
+            );
         });
 
     return field;
@@ -259,14 +276,12 @@ fn extract_field(line: &String, access_modifier: &String) -> Option<Field> {
 // Helper function to extract two capture groups (used for methods and attributes)
 fn extract_captures<'a>(regex: &Regex, text: &'a str, groups: Vec<usize>) -> Option<Vec<&'a str>> {
     // Collect the captures from each group, filtering out None values
-    let captures: Option<Vec<&'a str>> = groups.iter()
+    let captures: Option<Vec<&'a str>> = groups
+        .iter()
         .map(|&group| {
-            regex.captures(text)
-                .and_then(|cap| {
-                    cap.get(group).map(|m| {
-                        m.as_str()
-                    })
-                })
+            regex
+                .captures(text)
+                .and_then(|cap| cap.get(group).map(|m| m.as_str()))
         })
         .collect();
 
@@ -281,5 +296,23 @@ fn get_access_modifier(c: char) -> Option<AccessModifier> {
         CH_PRIVATE => Some(AccessModifier::PRIVATE("private".to_string())),
         CH_PROTECTED => Some(AccessModifier::PROTECTED("protected".to_string())),
         _ => None, // Handle invalid character
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs::File;
+    use crate::code_generators::java::JavaCodeGenerator;
+    use crate::common::constants::TEST_DATA_PATH;
+    use crate::core_parser::parser::parse;
+
+    #[test]
+    fn parse_e2e() {
+
+        let path = format!("{}{}", TEST_DATA_PATH, "test.puml"); // Relative path to the test file
+        let file = File::open(path.as_str()).expect(format!("Failed to read file: {}", path).as_str());
+        parse(file, Box::new(JavaCodeGenerator));
+
+        assert!(true);
     }
 }

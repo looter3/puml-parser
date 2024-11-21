@@ -1,11 +1,11 @@
 use std::collections::{HashMap, HashSet};
-use crate::puml::code_generators::java::JavaCodeGenerator;
-use crate::puml::core_parser::class::{Class, Field, Method};
-use crate::puml::core_parser::interface::Interface;
-use crate::puml::core_parser::types::Type;
+
+use crate::code_generators::java::JavaCodeGenerator;
+use crate::types::class::{Class, Field, Method};
+use crate::types::interface::Interface;
+use crate::types::r#type::Type;
 
 pub trait CodeGenerator {
-
     fn generate_source(&self, types: HashMap<String, Box<dyn Type>>) -> HashMap<String, String>;
     // Class
     fn generate_class(&self, class: &Class) -> String;

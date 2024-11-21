@@ -1,0 +1,39 @@
+@startuml
+
+class User <<Entity>> {
+     - Long id
+     - String name
+     - String lastName
+     - {field} String email (to validate ex. @Email)
+     - {field} String password (store hashed password)
+
+     + Long : getId()
+     + Long : setId(Long id)
+}
+
+class UserRepository extends JpaRepository<User, Long> {
+    + void : findByNameAndLastName(String name, String lastName)
+}
+
+class UserService <<Service>> {
+
+    - UserRepository userRepository
+
+}
+
+class UserController <<RestController>> {
+
+    - UserService userService
+
+}
+
+interface AnInterfaceInterface {
+
+    - UserService userService
+    + void : findByNameAndLastName(String name, String lastName)
+}
+
+abstract AnAbstract {
+}
+
+@enduml

@@ -11,4 +11,3 @@ pub const FIELD_PATTERN: &str = r"[-+#] (\w+) (\w+)";
 
 // Interface
 pub const INTERFACE_PATTERN: &str = "interface (\\w+)";
-
